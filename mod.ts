@@ -1,5 +1,11 @@
+import { assert } from "./deps.ts";
+
+/** Turns a set-cookie header into a useable cookie header value */
 function getSetCookie(headers: Headers): string {
-  return headers.get("set-cookie")!.split(";")[0];
+  return headers.get("set-cookie")!
+    .split(", ")
+    .flatMap((cookie) => cookie.split("; ")[0])
+    .join("; ");
 }
 
 export interface ClientInit {
@@ -9,21 +15,23 @@ export interface ClientInit {
 }
 
 export class Client {
-  #origin: string;
   #username: string;
   #password: string;
+  #baseURL: string;
   #cookie?: string;
 
   constructor({ origin, username, password }: ClientInit) {
-    this.#origin = origin;
-    this.#username = username ?? "admin";
-    this.#password = password ?? "";
+    this.#username = username ??
+      Deno.env.get("ARUBA_AIRWAVE_USERNAME") ?? "admin";
+    this.#password = password ??
+      Deno.env.get("ARUBA_AIRWAVE_PASSWORD") ?? "";
+    this.#baseURL = origin;
   }
 
-  request(path: string, init?: RequestInit): Promise<Response> {
-    const request = new Request(this.#origin + path, init);
+  async request(path: string, init?: RequestInit): Promise<Response> {
+    const request = new Request(this.#baseURL + path, init);
     request.headers.set("cookie", this.#cookie!);
-    return fetch(request);
+    return await fetch(request);
   }
 
   async login(): Promise<void> {
@@ -37,7 +45,7 @@ export class Client {
       redirect: "manual",
     });
     await response.body?.cancel();
-    console.assert(response.status === 302, "Login failed");
+    assert(response.status === 302, "Login failed");
     this.#cookie = getSetCookie(response.headers);
   }
 
@@ -46,19 +54,23 @@ export class Client {
       method: "POST",
     });
     await response.body?.cancel();
-    console.assert(response.ok, "Logout failed");
+    assert(response.ok, "Logout failed");
     this.#cookie = undefined;
+  }
+
+  async requestOnce(path: string, init?: RequestInit): Promise<Response> {
+    await this.login();
+    const response = await this.request(path, init);
+    await this.logout();
+    return response;
   }
 }
 
-export async function request(
+export async function requestOnce(
   clientInit: ClientInit,
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
   const client = new Client(clientInit);
-  await client.login();
-  const response = await client.request(path, init);
-  await client.logout();
-  return response;
+  return await client.requestOnce(path, init);
 }
