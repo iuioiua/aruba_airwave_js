@@ -9,7 +9,7 @@ function getSetCookie(headers: Headers): string {
 }
 
 export interface ClientInit {
-  origin: string;
+  host: string;
   username?: string;
   password?: string;
 }
@@ -20,12 +20,12 @@ export class Client {
   #baseURL: string;
   #cookie?: string;
 
-  constructor({ origin, username, password }: ClientInit) {
-    this.#username = username ??
+  constructor(init: ClientInit) {
+    this.#username = init.username ??
       Deno.env.get("ARUBA_AIRWAVE_USERNAME") ?? "admin";
-    this.#password = password ??
+    this.#password = init.password ??
       Deno.env.get("ARUBA_AIRWAVE_PASSWORD") ?? "";
-    this.#baseURL = origin;
+    this.#baseURL = "https://" + init.host;
   }
 
   async request(path: string, init?: RequestInit): Promise<Response> {
